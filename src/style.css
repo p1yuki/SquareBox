@@ -4,9 +4,9 @@
 
 /* カスタムスタイル */
 .preview-image {
-    @apply w-full h-full object-contain bg-white rounded-lg shadow-md;
+    @apply w-full h-full object-contain bg-white;
 }
 
 .preview-container {
-    @apply relative aspect-square overflow-hidden rounded-lg;
+    @apply relative aspect-square overflow-hidden;
 } 

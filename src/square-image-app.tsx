@@ -1,16 +1,45 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { Upload, Download, X, Palette } from 'lucide-react';
+import { Upload, Download, X, Palette, Image as ImageIcon } from 'lucide-react';
+import Cropper from 'react-easy-crop';
 
-const SquareImageApp = () => {
-  // 状態管理（データの保存場所）
-  const [images, setImages] = useState([]); // アップロードされた画像の配列
-  const [backgroundColor, setBackgroundColor] = useState('#ffffff'); // 背景色
-  const [showColorPicker, setShowColorPicker] = useState(false); // カラーパレットの表示/非表示
-  const fileInputRef = useRef(null); // ファイル選択ボタンの参照
+// 型定義
+interface ImageData {
+  id: number;
+  file: File;
+  originalImage: HTMLImageElement;
+  name: string;
+  width: number;
+  height: number;
+}
+
+interface BackgroundImageData {
+  url: string;
+  width: number;
+  height: number;
+}
+
+const SquareImageApp: React.FC = () => {
+  // 状態管理
+  const [images, setImages] = useState<ImageData[]>([]); // アップロードされた画像の配列
+  const [backgroundColor, setBackgroundColor] = useState<string>('#ffffff'); // 背景色
+  const [showColorPicker, setShowColorPicker] = useState<boolean>(false); // カラーパレットの表示/非表示
+  const [backgroundType, setBackgroundType] = useState<'solid' | 'gradient' | 'image'>('solid');
+  const [gradientColors, setGradientColors] = useState<[string, string]>(['#ffffff', '#f5ede5']); // グラデーションの色
+  const [gradientDirection, setGradientDirection] = useState<string>('to right'); // グラデーションの方向
+  const [backgroundImage, setBackgroundImage] = useState<BackgroundImageData | null>(null); // 背景画像
+  const fileInputRef = useRef<HTMLInputElement | null>(null); // ファイル選択ボタンの参照
+  const bgImageInputRef = useRef<HTMLInputElement | null>(null); // 背景画像選択ボタンの参照
 
   // PWAインストール用の状態
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [showInstall, setShowInstall] = useState(false);
+  const [showInstall, setShowInstall] = useState<boolean>(false);
+
+  // クロップ用
+  const [cropModalOpen, setCropModalOpen] = useState<boolean>(false);
+  const [cropImage, setCropImage] = useState<string | null>(null);
+  const [crop, setCrop] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState<number>(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
 
   useEffect(() => {
     const handler = (e: any) => {
@@ -32,27 +61,18 @@ const SquareImageApp = () => {
     }
   };
 
-  // パステルカラーの定義（エモい色）
+  // パステルカラーの定義
   const pastelColors = [
-    '#e6b89c', // くすみオレンジ
-    '#b5c9c3', // くすみグリーン
-    '#a5a58d', // オリーブグレー
-    '#f5ede5', // 生成り
-    '#b7b7a4', // グレージュ
-    '#d6ccc2', // 淡いベージュ
-    '#cdb4db', // くすみパープル
-    '#f2c6de', // くすみピンク
-    '#adc2a9', // 淡いグリーン
-    '#a3c4bc', // くすみブルー
+    '#FFFFFF', '#e6b89c', '#b5c9c3', '#a5a58d', '#f5ede5', '#b7b7a4', '#d6ccc2', '#cdb4db', '#f2c6de', '#adc2a9', '#a3c4bc',
   ];
 
   // ドラッグアンドドロップのイベント処理
-  const handleDragOver = useCallback((e) => {
-    e.preventDefault(); // ブラウザのデフォルト動作を無効化
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
     e.stopPropagation();
   }, []);
 
-  const handleDrop = useCallback((e) => {
+  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
     const files = Array.from(e.dataTransfer.files);
@@ -60,100 +80,226 @@ const SquareImageApp = () => {
   }, []);
 
   // ファイルアップロード処理
-  const handleFileUpload = (files) => {
-    const imageFiles = files.filter(file => file.type.startsWith('image/'));
-    
+  const handleFileUpload = (files: File[]) => {
+    const imageFiles = files.filter((file) => file.type.startsWith('image/'));
     imageFiles.forEach((file) => {
-      const reader = new FileReader(); // ファイルを読み込むためのAPI
-      reader.onload = (e) => {
-        const img = new Image();
+      const reader = new FileReader();
+      reader.onload = (e: ProgressEvent<FileReader>) => {
+        const img = new window.Image();
         img.onload = () => {
-          // 新しい画像オブジェクトを作成
-          const newImage = {
-            id: Date.now() + Math.random(), // 一意のID
+          const newImage: ImageData = {
+            id: Date.now() + Math.random(),
             file: file,
             originalImage: img,
             name: file.name,
             width: img.width,
-            height: img.height
+            height: img.height,
           };
-          
-          // 既存の画像リストに追加
-          setImages(prev => [...prev, newImage]);
+          setImages((prev) => [...prev, newImage]);
         };
-        img.src = e.target.result;
+        if (e.target && typeof e.target.result === 'string') {
+          img.src = e.target.result;
+        }
       };
-      reader.readAsDataURL(file); // ファイルをデータURL形式で読み込み
+      reader.readAsDataURL(file);
     });
   };
 
   // ファイル選択ボタンのクリック処理
-  const handleFileSelect = (e) => {
-    const files = Array.from(e.target.files);
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
     handleFileUpload(files);
   };
 
+  // 背景画像のアップロード処理
+  const handleBackgroundImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setCropImage(e.target?.result as string);
+        setCropModalOpen(true);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // クロップ完了時の処理
+  const onCropComplete = useCallback((_: any, croppedAreaPixels: { x: number; y: number; width: number; height: number }) => {
+    setCroppedAreaPixels(croppedAreaPixels);
+  }, []);
+
+  // クロップ画像を背景としてセット
+  const handleCropConfirm = async () => {
+    if (!cropImage || !croppedAreaPixels) return;
+    const image = new window.Image();
+    image.src = cropImage;
+    await new Promise((resolve) => { image.onload = resolve; });
+    const canvas = document.createElement('canvas');
+    const size = Math.max(croppedAreaPixels.width, croppedAreaPixels.height);
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, size, size);
+    ctx.drawImage(
+      image,
+      croppedAreaPixels.x,
+      croppedAreaPixels.y,
+      croppedAreaPixels.width,
+      croppedAreaPixels.height,
+      0,
+      0,
+      size,
+      size
+    );
+    const url = canvas.toDataURL();
+    setBackgroundImage({ url, width: size, height: size });
+    setCropModalOpen(false);
+    setCropImage(null);
+  };
+
+  // プレビュー用の背景スタイルを生成
+  const getPreviewBackgroundStyle = () => {
+    if (backgroundType === 'gradient') {
+      return {
+        background: `linear-gradient(${gradientDirection}, ${gradientColors[0]}, ${gradientColors[1]})`,
+      };
+    } else if (backgroundType === 'image' && backgroundImage) {
+      return {
+        backgroundImage: `url(${backgroundImage.url})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+      };
+    } else {
+      return { backgroundColor };
+    }
+  };
+
+  // グラデーション方向の角度を計算
+  const getGradientAngle = (direction: string) => {
+    switch (direction) {
+      case 'to right': return 0;
+      case 'to bottom right': return 45;
+      case 'to bottom': return 90;
+      case 'to bottom left': return 135;
+      case 'to left': return 180;
+      case 'to top left': return 225;
+      case 'to top': return 270;
+      case 'to top right': return 315;
+      default: return 0;
+    }
+  };
+
+  // グラデーション方向を角度から設定
+  const setGradientDirectionFromAngle = (angle: number) => {
+    const directions = [
+      { angle: 0, direction: 'to right' },
+      { angle: 45, direction: 'to bottom right' },
+      { angle: 90, direction: 'to bottom' },
+      { angle: 135, direction: 'to bottom left' },
+      { angle: 180, direction: 'to left' },
+      { angle: 225, direction: 'to top left' },
+      { angle: 270, direction: 'to top' },
+      { angle: 315, direction: 'to top right' },
+    ];
+    const closest = directions.reduce((prev, curr) => {
+      return Math.abs(curr.angle - angle) < Math.abs(prev.angle - angle) ? curr : prev;
+    });
+    setGradientDirection(closest.direction);
+  };
+
   // 画像を正方形に変換してCanvasに描画
-  const createSquareImage = (imageData, bgColor) => {
+  const createSquareImage = (imageData: ImageData, bgColor: string) => {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
-    
-    // 正方形のサイズを決定（縦横の大きい方に合わせる）
+    if (!ctx) return canvas;
     const size = Math.max(imageData.width, imageData.height);
     canvas.width = size;
     canvas.height = size;
-    
-    // 背景色で塗りつぶし
-    ctx.fillStyle = bgColor;
+    // 背景の描画
+    if (backgroundType === 'gradient') {
+      const gradient = ctx.createLinearGradient(
+        gradientDirection.includes('right') ? 0 : size,
+        gradientDirection.includes('bottom') ? 0 : size,
+        gradientDirection.includes('right') ? size : 0,
+        gradientDirection.includes('bottom') ? size : 0
+      );
+      gradient.addColorStop(0, gradientColors[0]);
+      gradient.addColorStop(1, gradientColors[1]);
+      ctx.fillStyle = gradient;
+    } else if (backgroundType === 'image' && backgroundImage) {
+      // 背景画像を描画
+      ctx.drawImage(
+        (() => {
+          const img = new window.Image();
+          img.src = backgroundImage.url;
+          return img;
+        })(),
+        0, 0, backgroundImage.width, backgroundImage.height,
+        0, 0, size, size
+      );
+    } else {
+      ctx.fillStyle = bgColor;
+    }
     ctx.fillRect(0, 0, size, size);
-    
     // 画像を中央に配置するための計算
     const x = (size - imageData.width) / 2;
     const y = (size - imageData.height) / 2;
-    
-    // 画像を描画
     ctx.drawImage(imageData.originalImage, x, y);
-    
     return canvas;
   };
 
   // 単体画像のダウンロード
-  const downloadImage = (imageData) => {
+  const downloadImage = (imageData: ImageData) => {
     const canvas = createSquareImage(imageData, backgroundColor);
-    
-    // CanvasをBlob形式に変換してダウンロード
     canvas.toBlob((blob) => {
+      if (!blob) return;
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `square_${imageData.name}`;
+      const fileName = imageData.name;
+      const lastDotIndex = fileName.lastIndexOf('.');
+      const nameWithoutExt = fileName.substring(0, lastDotIndex);
+      const extension = fileName.substring(lastDotIndex);
+      a.download = `${nameWithoutExt}_squared${extension}`;
       a.click();
-      URL.revokeObjectURL(url); // メモリリークを防ぐためにURLを解放
+      URL.revokeObjectURL(url);
     }, 'image/png');
   };
 
   // 一括ダウンロード機能
   const downloadAllImages = async () => {
     if (images.length === 0) return;
-    for (let i = 0; i < images.length; i++) {
-      const imageData = images[i];
-      const canvas = createSquareImage(imageData, backgroundColor);
-      canvas.toBlob((blob) => {
-        if (!blob) return;
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `square_${String(i + 1).padStart(3, '0')}_${imageData.name}`;
-        a.click();
-        URL.revokeObjectURL(url);
-      }, 'image/png');
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
+    const downloadPromises = images.map((imageData) => {
+      return new Promise<void>((resolve) => {
+        const canvas = createSquareImage(imageData, backgroundColor);
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            resolve();
+            return;
+          }
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          const fileName = imageData.name;
+          const lastDotIndex = fileName.lastIndexOf('.');
+          const nameWithoutExt = fileName.substring(0, lastDotIndex);
+          const extension = fileName.substring(lastDotIndex);
+          a.download = `${nameWithoutExt}_squared${extension}`;
+          a.click();
+          URL.revokeObjectURL(url);
+          resolve();
+        }, 'image/png');
+      });
+    });
+    await Promise.all(downloadPromises);
   };
 
   // 画像の削除
-  const removeImage = (id) => {
-    setImages(prev => prev.filter(img => img.id !== id));
+  const removeImage = (id: number) => {
+    setImages((prev) => prev.filter((img) => img.id !== id));
   };
 
   return (
@@ -215,43 +361,139 @@ const SquareImageApp = () => {
         {/* 背景色選択 */}
         <div className="mb-6">
           <div className="flex items-center gap-4 mb-4">
-            <h3 className="text-lg font-semibold text-gray-800">背景色</h3>
-            <button
-              onClick={() => setShowColorPicker(!showColorPicker)}
-              className="flex items-center gap-2 px-3 py-1 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
-            >
-              <Palette className="h-4 w-4" />
-              カスタムカラー
-            </button>
+            <h3 className="text-lg font-semibold text-gray-800">背景</h3>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setBackgroundType('solid')}
+                className={`px-3 py-1 rounded-md transition-colors ${
+                  backgroundType === 'solid' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'
+                }`}
+              >
+                単色
+              </button>
+              <button
+                onClick={() => setBackgroundType('gradient')}
+                className={`px-3 py-1 rounded-md transition-colors ${
+                  backgroundType === 'gradient' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'
+                }`}
+              >
+                グラデーション
+              </button>
+              <button
+                onClick={() => setBackgroundType('image')}
+                className={`px-3 py-1 rounded-md transition-colors ${
+                  backgroundType === 'image' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'
+                }`}
+              >
+                画像
+              </button>
+            </div>
           </div>
           
-          {/* パステルカラー選択 */}
-          <div className="flex flex-wrap gap-2 mb-4">
-            {pastelColors.map((color) => (
-              <button
-                key={color}
-                onClick={() => setBackgroundColor(color)}
-                className={`w-10 h-10 rounded-full border-2 ${
-                  backgroundColor === color ? 'border-blue-500' : 'border-gray-300'
-                } hover:scale-110 transition-transform`}
-                style={{ backgroundColor: color }}
-                title={color}
-              />
-            ))}
-          </div>
+          {backgroundType === 'solid' && (
+            <>
+              {/* パステルカラー選択 */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                {pastelColors.map((color) => (
+                  <button
+                    key={color}
+                    onClick={() => setBackgroundColor(color)}
+                    className={`w-10 h-10 rounded-full border-2 ${
+                      backgroundColor === color ? 'border-blue-500' : 'border-gray-300'
+                    } hover:scale-110 transition-transform`}
+                    style={{ backgroundColor: color }}
+                    title={color}
+                  />
+                ))}
+              </div>
 
-          {/* カスタムカラーピッカー */}
-          {showColorPicker && (
-            <div className="mb-4">
-              <input
-                type="color"
-                value={backgroundColor}
-                onChange={(e) => setBackgroundColor(e.target.value)}
-                className="w-20 h-10 rounded border border-gray-300"
+              {/* カスタムカラーピッカー */}
+              <div className="mb-4">
+                <input
+                  type="color"
+                  value={backgroundColor}
+                  onChange={(e) => setBackgroundColor(e.target.value)}
+                  className="w-20 h-10 rounded border border-gray-300"
+                />
+                <span className="ml-2 text-sm text-gray-600">
+                  選択中: {backgroundColor}
+                </span>
+              </div>
+            </>
+          )}
+
+          {backgroundType === 'gradient' && (
+            <div className="space-y-4">
+              <div className="flex gap-4">
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">開始色</label>
+                  <input
+                    type="color"
+                    value={gradientColors[0]}
+                    onChange={(e) => setGradientColors([e.target.value, gradientColors[1]])}
+                    className="w-20 h-10 rounded border border-gray-300"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">終了色</label>
+                  <input
+                    type="color"
+                    value={gradientColors[1]}
+                    onChange={(e) => setGradientColors([gradientColors[0], e.target.value])}
+                    className="w-20 h-10 rounded border border-gray-300"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">方向</label>
+                <select
+                  value={gradientDirection}
+                  onChange={(e) => setGradientDirection(e.target.value)}
+                  className="px-3 py-1 rounded border border-gray-300"
+                >
+                  <option value="to right">左から右</option>
+                  <option value="to left">右から左</option>
+                  <option value="to bottom">上から下</option>
+                  <option value="to top">下から上</option>
+                  <option value="to bottom right">左上から右下</option>
+                  <option value="to top left">右下から左上</option>
+                </select>
+              </div>
+              <div 
+                className="w-full h-20 rounded border border-gray-300"
+                style={{
+                  background: `linear-gradient(${gradientDirection}, ${gradientColors[0]}, ${gradientColors[1]})`
+                }}
               />
-              <span className="ml-2 text-sm text-gray-600">
-                選択中: {backgroundColor}
-              </span>
+            </div>
+          )}
+
+          {backgroundType === 'image' && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={() => bgImageInputRef.current?.click()}
+                  className="flex items-center gap-2 px-3 py-1 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+                >
+                  <ImageIcon className="h-4 w-4" />
+                  背景画像を選択
+                </button>
+                {backgroundImage && (
+                  <button
+                    onClick={() => setBackgroundImage(null)}
+                    className="px-3 py-1 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors"
+                  >
+                    画像を削除
+                  </button>
+                )}
+                <input
+                  ref={bgImageInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleBackgroundImageUpload}
+                  className="hidden"
+                />
+              </div>
             </div>
           )}
         </div>
@@ -276,8 +518,8 @@ const SquareImageApp = () => {
               {images.map((imageData) => (
                 <div key={imageData.id} className="relative group">
                   <div 
-                    className="aspect-square rounded-lg overflow-hidden border border-gray-200 flex items-center justify-center"
-                    style={{ backgroundColor }}
+                    className="aspect-square overflow-hidden border border-gray-200 flex items-center justify-center"
+                    style={getPreviewBackgroundStyle()}
                   >
                     <img
                       src={URL.createObjectURL(imageData.file)}
@@ -311,6 +553,54 @@ const SquareImageApp = () => {
                   </p>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* クロップ用モーダル */}
+        {cropModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
+            <div className="bg-white rounded-lg shadow-lg p-6 relative w-[90vw] max-w-2xl">
+              <h2 className="text-lg font-semibold mb-4">背景画像の範囲を選択</h2>
+              <div className="relative w-full h-96 bg-gray-200">
+                <Cropper
+                  image={cropImage!}
+                  crop={crop}
+                  zoom={zoom}
+                  aspect={1}
+                  onCropChange={setCrop}
+                  onZoomChange={setZoom}
+                  onCropComplete={onCropComplete}
+                  cropShape="rect"
+                  showGrid={true}
+                />
+              </div>
+              <div className="flex items-center gap-4 mt-4">
+                <span className="text-sm">ズーム</span>
+                <input
+                  type="range"
+                  min={1}
+                  max={3}
+                  step={0.01}
+                  value={zoom}
+                  onChange={e => setZoom(Number(e.target.value))}
+                  className="w-40"
+                />
+              </div>
+              <div className="flex justify-end gap-2 mt-6">
+                <button
+                  onClick={() => { setCropModalOpen(false); setCropImage(null); }}
+                  className="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+                >
+                  キャンセル
+                </button>
+                <button
+                  onClick={handleCropConfirm}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                >
+                  決定
+                </button>
+              </div>
             </div>
           </div>
         )}

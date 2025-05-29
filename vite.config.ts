@@ -3,8 +3,8 @@ import react from '@vitejs/plugin-react';
 import svgr from 'vite-plugin-svgr';
 import { VitePWA } from 'vite-plugin-pwa';
 
-export default defineConfig({
-  base: '/SquareBox/',
+export default defineConfig(({ command }) => ({
+  base: command === 'serve' ? '/' : '/SquareBox/',
   plugins: [
     react(),
     svgr(),
@@ -28,4 +28,4 @@ export default defineConfig({
       },
     }),
   ],
-}); 
+})); 

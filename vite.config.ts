@@ -14,25 +14,26 @@ export default defineConfig(({ command }) => ({
         name: 'SquareBox',
         short_name: 'SquareBox',
         description: '写真を正方形に整えるローカルファースト画像アプリ',
-        start_url: '.',
+        start_url: '/SquareBox/',
+        scope: '/SquareBox/',
         display: 'standalone',
         background_color: '#f5ede5',
         theme_color: '#e6b89c',
         icons: [
           {
-            src: 'SquareBox-512.png',
+            src: '/SquareBox/SquareBox-512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any maskable'
           },
           {
-            src: 'SquareBox-192.png',
+            src: '/SquareBox/SquareBox-192.png',
             sizes: '192x192',
             type: 'image/png',
             purpose: 'any maskable'
           },
           {
-            src: 'SquareBox-144.png',
+            src: '/SquareBox/SquareBox-144.png',
             sizes: '144x144',
             type: 'image/png',
             purpose: 'any maskable'

@@ -1,0 +1,1 @@
+{"name":"SquareBox","short_name":"SquareBox","description":"写真を正方形に整えるローカルファースト画像アプリ","start_url":".","display":"standalone","background_color":"#f5ede5","theme_color":"#e6b89c","lang":"en","scope":"/SquareBox/","icons":[{"src":"SquareBox.png","sizes":"512x512","type":"image/png"}]}

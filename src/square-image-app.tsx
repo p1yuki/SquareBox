@@ -33,6 +33,7 @@ const SquareImageApp: React.FC = () => {
   // PWAインストール用の状態
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstall, setShowInstall] = useState<boolean>(false);
+  const [isInstalled, setIsInstalled] = useState<boolean>(false);
 
   // クロップ用
   const [cropModalOpen, setCropModalOpen] = useState<boolean>(false);
@@ -42,6 +43,11 @@ const SquareImageApp: React.FC = () => {
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
 
   useEffect(() => {
+    // インストール済みかどうかを確認
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsInstalled(true);
+    }
+
     const handler = (e: any) => {
       e.preventDefault();
       setDeferredPrompt(e);
@@ -57,6 +63,7 @@ const SquareImageApp: React.FC = () => {
       const { outcome } = await deferredPrompt.userChoice;
       if (outcome === 'accepted') {
         setShowInstall(false);
+        setIsInstalled(true);
       }
     }
   };
@@ -306,24 +313,26 @@ const SquareImageApp: React.FC = () => {
     <div className="max-w-6xl mx-auto p-6 bg-gray-50 min-h-screen">
       <div className="bg-white rounded-lg shadow-lg p-6">
         {/* インストールボタンとガイド */}
-        <div className="mb-4 flex flex-col items-end">
-          {showInstall && (
-            <button
-              onClick={handleInstallClick}
-              className="px-4 py-2 bg-blue-600 text-white rounded shadow hover:bg-blue-700 transition-colors mb-2"
-            >
-              SquareBoxをインストール
-            </button>
-          )}
-          <div className="text-sm text-gray-600 bg-blue-50 rounded p-2">
-            <span className="font-semibold">インストール方法：</span>
-            {showInstall ? (
-              <>上の「SquareBoxをインストール」ボタンを押してください。</>
-            ) : (
-              <>Chromeの右上「︙」メニューから「SquareBoxをインストール」を選択してください。</>
+        {!isInstalled && (
+          <div className="mb-4 flex flex-col items-end">
+            {showInstall && (
+              <button
+                onClick={handleInstallClick}
+                className="px-4 py-2 bg-blue-600 text-white rounded shadow hover:bg-blue-700 transition-colors mb-2"
+              >
+                SquareBoxをインストール
+              </button>
             )}
+            <div className="text-sm text-gray-600 bg-blue-50 rounded p-2">
+              <span className="font-semibold">インストール方法：</span>
+              {showInstall ? (
+                <>上の「SquareBoxをインストール」ボタンを押してください。</>
+              ) : (
+                <>Chromeの右上「︙」メニューから「SquareBoxをインストール」を選択してください。</>
+              )}
+            </div>
           </div>
-        </div>
+        )}
         {/* ヘッダー */}
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-gray-800 mb-2">
